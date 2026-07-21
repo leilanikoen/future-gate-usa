@@ -116,18 +116,16 @@ export async function listMenteesFull(mentorId) {
   if (error) throw error;
   const ids = (students || []).map((s) => s.id);
   if (!ids.length) return [];
-  const [{ data: profiles }, { data: items }] = await Promise.all([
+  const [{ data: profiles }, pcts] = await Promise.all([
     supabase.from("profiles").select("id, full_name, avatar_url").in("id", ids),
-    supabase.from("portfolio_items").select("student_id, section").in("student_id", ids),
+    completionMap(ids),
   ]);
   const info = Object.fromEntries((profiles || []).map((p) => [p.id, p]));
-  const sections = {};
-  (items || []).forEach((it) => { (sections[it.student_id] ||= new Set()).add(it.section); });
   return students.map((s) => ({
     ...s,
     name: info[s.id]?.full_name || "Student",
     avatar_url: info[s.id]?.avatar_url,
-    pct: Math.round(((sections[s.id]?.size || 0) / 7) * 100),
+    pct: pcts[s.id] || 0,
   }));
 }
 
@@ -137,9 +135,9 @@ export const addFeedback = (studentId, authorId, body) =>
 export async function getStudentForReview(studentId) {
   const { data: student } = await supabase.from("students").select("*").eq("id", studentId).maybeSingle();
   if (!student) return null;
-  const { data: profile } = await supabase.from("profiles").select("full_name, avatar_url").eq("id", studentId).maybeSingle();
-  const [items, feedback] = await Promise.all([listItems(studentId), listFeedback(studentId)]);
-  return { student, name: profile?.full_name || "Student", avatar_url: profile?.avatar_url, items, feedback };
+  const { data: profile } = await supabase.from("profiles").select("full_name, avatar_url, city").eq("id", studentId).maybeSingle();
+  const [bundle, feedback] = await Promise.all([getPortfolioBundle(studentId), listFeedback(studentId)]);
+  return { student, name: profile?.full_name || "Student", avatar_url: profile?.avatar_url, city: profile?.city, bundle, feedback };
 }
 
 export async function feedbackSentThisMonth(authorId) {
@@ -195,20 +193,18 @@ export async function listAllStudents() {
   if (!ids.length) return [];
   const mentorIds = [...new Set(students.map((s) => s.mentor_id).filter(Boolean))];
   const lookupIds = [...new Set([...ids, ...mentorIds])];
-  const [{ data: profiles }, { data: items }] = await Promise.all([
+  const [{ data: profiles }, pcts] = await Promise.all([
     supabase.from("profiles").select("id, full_name, avatar_url, is_active").in("id", lookupIds),
-    supabase.from("portfolio_items").select("student_id, section").in("student_id", ids),
+    completionMap(ids),
   ]);
   const info = Object.fromEntries((profiles || []).map((p) => [p.id, p]));
-  const sections = {};
-  (items || []).forEach((it) => { (sections[it.student_id] ||= new Set()).add(it.section); });
   return students.map((s) => ({
     ...s,
     name: info[s.id]?.full_name || "Student",
     avatar_url: info[s.id]?.avatar_url,
     is_active: info[s.id]?.is_active ?? true,
     mentor_name: s.mentor_id ? (info[s.mentor_id]?.full_name || "Mentor") : null,
-    pct: Math.round(((sections[s.id]?.size || 0) / 7) * 100),
+    pct: pcts[s.id] || 0,
   }));
 }
 
@@ -399,4 +395,25 @@ export async function getPublicPortfolioV2(slug) {
     student, name: profile?.full_name || "Student", avatar_url: profile?.avatar_url, city: profile?.city,
     modules, entries: entriesRes.data || [], files: filesRes.data || [],
   };
+}
+
+// Completion % per student on the new model, batched for rosters.
+// (share of a student's non-computed modules that have >=1 titled entry)
+export async function completionMap(studentIds) {
+  if (!studentIds.length) return {};
+  const [{ data: mods }, { data: ents }] = await Promise.all([
+    supabase.from("portfolio_modules").select("id, student_id, kind").in("student_id", studentIds),
+    supabase.from("portfolio_entries").select("student_id, module_id, title").in("student_id", studentIds),
+  ]);
+  const tracked = {};                          // student -> Set(non-computed module ids)
+  (mods || []).forEach((m) => { if (m.kind !== "computed") (tracked[m.student_id] ||= new Set()).add(m.id); });
+  const filled = {};                           // student -> Set(module ids with a titled entry)
+  (ents || []).forEach((e) => { if ((e.title || "").trim()) (filled[e.student_id] ||= new Set()).add(e.module_id); });
+  const out = {};
+  studentIds.forEach((id) => {
+    const t = tracked[id]?.size || 0;
+    const f = filled[id] ? [...filled[id]].filter((mid) => tracked[id]?.has(mid)).length : 0;
+    out[id] = t ? Math.round((f / t) * 100) : 0;
+  });
+  return out;
 }
