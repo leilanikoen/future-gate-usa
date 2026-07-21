@@ -2,7 +2,7 @@ import { useEffect, useState, useCallback } from "react";
 import { Outlet, useNavigate, useLocation } from "react-router-dom";
 import { LayoutGrid, Users, MessageSquare, Activity as ActivityIcon, Settings as SettingsIcon } from "lucide-react";
 import { useAuth } from "../../context/AuthContext.jsx";
-import { listMenteesFull } from "../../lib/db.js";
+import { listMenteesFull, listFeedbackForStudents } from "../../lib/db.js";
 import AppShell from "../../components/layout/AppShell.jsx";
 import { Spinner } from "../../components/ui/Feedback.jsx";
 
@@ -22,18 +22,20 @@ export default function MentorLayout() {
   const nav = useNavigate();
   const loc = useLocation();
   const [mentees, setMentees] = useState(null);
+  const [openFeedback, setOpenFeedback] = useState(0);
 
   const reload = useCallback(async () => {
-    setMentees(await listMenteesFull(user.id));
+    const list = await listMenteesFull(user.id);
+    setMentees(list);
+    const threads = await listFeedbackForStudents(list.map((m) => m.id));
+    setOpenFeedback(threads.filter((t) => !t.resolved).length);
   }, [user.id]);
   useEffect(() => { reload(); }, [reload]);
-
-  const pendingCount = (mentees || []).filter((m) => m.status === "pending").length;
 
   const NAV = [
     { key: "dashboard", label: "Dashboard", icon: LayoutGrid },
     { key: "students", label: "Assigned Students", icon: Users },
-    { key: "feedback", label: "Feedback", icon: MessageSquare, badge: pendingCount || undefined },
+    { key: "feedback", label: "Feedback", icon: MessageSquare, badge: openFeedback || undefined },
     { key: "activity", label: "Activity", icon: ActivityIcon },
     { key: "settings", label: "Settings", icon: SettingsIcon },
   ];

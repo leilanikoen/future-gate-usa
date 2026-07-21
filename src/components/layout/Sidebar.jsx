@@ -75,9 +75,12 @@ export default function Sidebar({
               <span className="font-semibold text-brand-600">{progress.value}%</span>
             </div>
             <Progress value={progress.value} />
-            <button className="text-xs font-medium text-brand-600 mt-3 hover:underline">
-              Finish your portfolio →
-            </button>
+            {progress.onClick && (
+              <button onClick={() => { progress.onClick(); onClose?.(); }}
+                className="text-xs font-medium text-brand-600 mt-3 hover:underline">
+                Finish your portfolio →
+              </button>
+            )}
           </div>
         )}
 

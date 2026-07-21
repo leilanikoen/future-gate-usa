@@ -58,7 +58,7 @@ export default function StudentLayout() {
       active={activeFromPath(loc.pathname)}
       onNavigate={(k) => nav(ROUTES[k])}
       subtitle="Student"
-      progress={{ value: pct, label: "Portfolio Progress" }}
+      progress={{ value: pct, label: "Portfolio Progress", onClick: () => nav("/app/portfolio") }}
       user={{ name: profile?.full_name || profile?.email || "Student", subtitle: student?.grade ? `Grade ${student.grade}` : "Student", src: profile?.avatar_url }}
       onSignOut={signOut}
       search="Search your portfolio…"
