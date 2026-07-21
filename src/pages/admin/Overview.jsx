@@ -18,7 +18,6 @@ export default function Overview() {
   const pending = students.filter((s) => s.status === "pending").length;
   const activeMentors = mentors.filter((m) => m.is_active).length;
   const files = students.reduce((n, s) => n + Math.round((s.pct / 100) * 7), 0); // approx items-by-section
-  const maxPct = 100;
 
   const serviceMix = Object.entries(
     students.reduce((m, s) => { m[s.service] = (m[s.service] || 0) + 1; return m; }, {})
@@ -40,13 +39,15 @@ export default function Overview() {
         <Card className="lg:col-span-2 p-6">
           <h2 className="text-lg font-bold mb-6">Portfolio completion</h2>
           {students.length === 0 ? <p className="text-sm text-muted">No students yet.</p> : (
-            <div className="flex items-end gap-3 h-48 overflow-x-auto">
+            <div className="flex items-end gap-3 h-56 overflow-x-auto pb-1">
               {students.map((s) => (
-                <div key={s.id} className="flex-1 min-w-14 flex flex-col items-center gap-2">
-                  <div className="text-xs font-semibold text-muted">{s.pct}%</div>
-                  <div className="w-full rounded-t-lg bg-gradient-to-t from-brand-600 to-brand-400"
-                       style={{ height: `${Math.max((s.pct / maxPct) * 100, 3)}%` }} />
-                  <div className="text-xs text-muted truncate w-full text-center">{s.name.split(" ")[0]}</div>
+                <div key={s.id} className="flex-1 min-w-14 h-full flex flex-col items-center">
+                  <div className="text-xs font-semibold text-muted mb-1">{s.pct}%</div>
+                  <div className="flex-1 w-full flex items-end">
+                    <div className="w-full rounded-t-lg bg-gradient-to-t from-brand-600 to-brand-400 min-h-1"
+                         style={{ height: `${Math.max(s.pct, 3)}%` }} />
+                  </div>
+                  <div className="text-xs text-muted truncate w-full text-center mt-2">{s.name.split(" ")[0]}</div>
                 </div>
               ))}
             </div>
