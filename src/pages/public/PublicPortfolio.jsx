@@ -2,7 +2,7 @@ import { useEffect, useState } from "react";
 import { useParams } from "react-router-dom";
 import { Play, Eye } from "lucide-react";
 import { getPublicPortfolio, signedUrl } from "../../lib/db.js";
-import { SECTIONS, groupItems } from "../../lib/constants.js";
+import { SECTIONS } from "../../lib/constants.js";
 import Logo from "../../components/ui/Logo.jsx";
 import Avatar from "../../components/ui/Avatar.jsx";
 import { Spinner } from "../../components/ui/Feedback.jsx";
@@ -40,9 +40,16 @@ export default function PublicPortfolio() {
       </div>
     );
 
-  const { name, avatar_url, student, items } = state.data;
-  const grouped = groupItems(items);
-  const filled = SECTIONS.filter((s) => grouped[s.key].length > 0);
+  const { name, avatar_url, student, items, sections = [] } = state.data;
+  const allSections = [
+    ...SECTIONS,
+    ...sections.map((c) => ({ key: c.id, label: c.label })),
+  ];
+  const grouped = {};
+  allSections.forEach((s) => (grouped[s.key] = []));
+  (items || []).forEach((it) => { (grouped[it.section] ||= []).push(it); });
+  Object.values(grouped).forEach((arr) => arr.sort((a, b) => a.position - b.position));
+  const filled = allSections.filter((s) => (grouped[s.key] || []).length > 0);
 
   return (
     <div className="min-h-screen bg-canvas">

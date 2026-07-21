@@ -102,7 +102,8 @@ export async function getPublicPortfolio(slug) {
   const { data: profile } = await supabase
     .from("profiles").select("full_name, avatar_url").eq("id", student.id).maybeSingle();
   const items = await listItems(student.id);
-  return { student, name: profile?.full_name || "Student", avatar_url: profile?.avatar_url, items };
+  const { data: sections } = await supabase.from("portfolio_sections").select("*").eq("student_id", student.id).order("position");
+  return { student, name: profile?.full_name || "Student", avatar_url: profile?.avatar_url, items, sections: sections || [] };
 }
 
 /* ================= mentor ================= */
@@ -258,4 +259,20 @@ export async function createAccount({ email, full_name, role, title, focus }) {
   }
   if (data?.error) throw new Error(data.error);
   return data;
+}
+
+/* ================= custom portfolio sections ("Add module") ================= */
+export async function listSections(studentId) {
+  const { data } = await supabase.from("portfolio_sections").select("*").eq("student_id", studentId).order("position");
+  return data || [];
+}
+export async function addSection(studentId, label) {
+  const { data: existing } = await supabase.from("portfolio_sections").select("position").eq("student_id", studentId);
+  const position = (existing || []).reduce((m, r) => Math.max(m, r.position), -1) + 1;
+  return supabase.from("portfolio_sections").insert({ student_id: studentId, label, position }).select().single();
+}
+export const renameSection = (id, label) => supabase.from("portfolio_sections").update({ label }).eq("id", id);
+export async function deleteSection(id, studentId) {
+  await supabase.from("portfolio_items").delete().eq("student_id", studentId).eq("section", id);
+  return supabase.from("portfolio_sections").delete().eq("id", id);
 }
