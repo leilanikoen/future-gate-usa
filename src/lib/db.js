@@ -11,39 +11,7 @@ export async function getMyStudent(userId) {
 export const updateStudent = (id, patch) => supabase.from("students").update(patch).eq("id", id);
 export const updateProfileFields = (id, patch) => supabase.from("profiles").update(patch).eq("id", id);
 
-/* ---------------- portfolio items ---------------- */
-export async function listItems(studentId) {
-  const { data, error } = await supabase
-    .from("portfolio_items").select("*").eq("student_id", studentId)
-    .order("section").order("position");
-  if (error) throw error;
-  return data || [];
-}
-
-export async function uploadPortfolioFile(studentId, section, file) {
-  const safe = file.name.replace(/[^a-zA-Z0-9._-]/g, "_");
-  const path = `${studentId}/${section}/${Date.now()}_${safe}`;
-  const { error } = await supabase.storage.from("portfolio").upload(path, file, { upsert: false });
-  if (error) throw error;
-  return path;
-}
-
-export async function addItem(studentId, section, { name, type, storage_path = null }) {
-  const { data: existing } = await supabase
-    .from("portfolio_items").select("position").eq("student_id", studentId).eq("section", section);
-  const position = (existing || []).reduce((m, r) => Math.max(m, r.position), -1) + 1;
-  return supabase.from("portfolio_items")
-    .insert({ student_id: studentId, section, name, type, storage_path, position });
-}
-
-export const renameItem = (id, name) => supabase.from("portfolio_items").update({ name }).eq("id", id);
-export const deleteItem = (id) => supabase.from("portfolio_items").delete().eq("id", id);
-
-export async function swapItems(a, b) {
-  await supabase.from("portfolio_items").update({ position: b.position }).eq("id", a.id);
-  await supabase.from("portfolio_items").update({ position: a.position }).eq("id", b.id);
-}
-
+/* ---------------- signed URLs for private files ---------------- */
 export async function signedUrl(path, expires = 3600) {
   if (!path) return null;
   const { data } = await supabase.storage.from("portfolio").createSignedUrl(path, expires);
@@ -95,17 +63,10 @@ export async function shareCountThisMonth(studentId) {
 export const logShare = (studentId, sharedBy) =>
   supabase.from("share_events").insert({ student_id: studentId, shared_by: sharedBy, channel: "link" });
 
-/* ---------------- public portfolio (by slug) ---------------- */
-export async function getPublicPortfolio(slug) {
-  const { data: student } = await supabase
-    .from("students").select("id, grade, term, privacy, slug").eq("slug", slug).maybeSingle();
-  if (!student) return null;
-  const { data: profile } = await supabase
-    .from("profiles").select("full_name, avatar_url").eq("id", student.id).maybeSingle();
-  const items = await listItems(student.id);
-  const { data: sections } = await supabase.from("portfolio_sections").select("*").eq("student_id", student.id).order("position");
-  return { student, name: profile?.full_name || "Student", avatar_url: profile?.avatar_url, items, sections: sections || [] };
-}
+/* ---------------- public portfolio ---------------- */
+// The public portfolio loader lives in the "dynamic Home data" section below
+// as getPublicPortfolioV2 (new modular model).
+
 
 /* ================= mentor ================= */
 
@@ -258,21 +219,6 @@ export async function createAccount({ email, full_name, role, title, focus }) {
   return data;
 }
 
-/* ================= custom portfolio sections ("Add module") ================= */
-export async function listSections(studentId) {
-  const { data } = await supabase.from("portfolio_sections").select("*").eq("student_id", studentId).order("position");
-  return data || [];
-}
-export async function addSection(studentId, label) {
-  const { data: existing } = await supabase.from("portfolio_sections").select("position").eq("student_id", studentId);
-  const position = (existing || []).reduce((m, r) => Math.max(m, r.position), -1) + 1;
-  return supabase.from("portfolio_sections").insert({ student_id: studentId, label, position }).select().single();
-}
-export const renameSection = (id, label) => supabase.from("portfolio_sections").update({ label }).eq("id", id);
-export async function deleteSection(id, studentId) {
-  await supabase.from("portfolio_items").delete().eq("student_id", studentId).eq("section", id);
-  return supabase.from("portfolio_sections").delete().eq("id", id);
-}
 /* ================= portfolio v2: modules / entries / evidence files ================= */
 const MODULE_COLS = "id, student_id, key, label, template, kind, icon, is_custom, hidden, position";
 const ENTRY_STUB_COLS = "id, student_id, module_id, title, subtitle, entry_date, featured, visibility, hidden, position";
