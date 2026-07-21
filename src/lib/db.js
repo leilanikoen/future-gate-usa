@@ -1,4 +1,5 @@
 import { supabase } from "./supabase.js";
+import { fileType } from "./constants.js";
 
 /* ---------------- student + profile ---------------- */
 export async function getMyStudent(userId) {
@@ -275,4 +276,98 @@ export const renameSection = (id, label) => supabase.from("portfolio_sections").
 export async function deleteSection(id, studentId) {
   await supabase.from("portfolio_items").delete().eq("student_id", studentId).eq("section", id);
   return supabase.from("portfolio_sections").delete().eq("id", id);
+}
+/* ================= portfolio v2: modules / entries / evidence files ================= */
+const MODULE_COLS = "id, student_id, key, label, template, kind, icon, is_custom, hidden, position";
+const ENTRY_STUB_COLS = "id, student_id, module_id, title, subtitle, entry_date, featured, visibility, hidden, position";
+
+export async function listModules(studentId) {
+  const { data, error } = await supabase.from("portfolio_modules").select(MODULE_COLS)
+    .eq("student_id", studentId).order("position");
+  if (error) throw error;
+  return data || [];
+}
+
+// Light rows for the module rail, entry lists, counts, and progress.
+export async function listEntryStubs(studentId) {
+  const { data, error } = await supabase.from("portfolio_entries").select(ENTRY_STUB_COLS)
+    .eq("student_id", studentId).order("position");
+  if (error) throw error;
+  return data || [];
+}
+
+export async function getEntry(entryId) {
+  const { data, error } = await supabase.from("portfolio_entries").select("*").eq("id", entryId).maybeSingle();
+  if (error) throw error;
+  return data;
+}
+
+export async function listEntryFiles(entryId) {
+  const { data } = await supabase.from("portfolio_entry_files").select("*").eq("entry_id", entryId).order("position");
+  return data || [];
+}
+
+const slugify = (s) => (s || "").toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/(^-|-$)/g, "");
+
+export async function addModule(studentId, label) {
+  const clean = (label || "").trim() || "New module";
+  const key = `custom-${slugify(clean).slice(0, 24) || "module"}-${Math.random().toString(36).slice(2, 6)}`;
+  const { data: existing } = await supabase.from("portfolio_modules").select("position").eq("student_id", studentId);
+  const position = (existing || []).reduce((m, r) => Math.max(m, r.position), -1) + 1;
+  const { data, error } = await supabase.from("portfolio_modules")
+    .insert({ student_id: studentId, key, label: clean, template: "generic", kind: "collection", icon: "Folder", is_custom: true, position })
+    .select(MODULE_COLS).single();
+  if (error) throw error;
+  return data;
+}
+
+export const renameModule   = (id, label)  => supabase.from("portfolio_modules").update({ label }).eq("id", id);
+export const setModuleHidden = (id, hidden) => supabase.from("portfolio_modules").update({ hidden }).eq("id", id);
+export const deleteModule   = (id)          => supabase.from("portfolio_modules").delete().eq("id", id);
+
+export async function reorderModules(orderedIds) {
+  await Promise.all(orderedIds.map((id, i) => supabase.from("portfolio_modules").update({ position: i }).eq("id", id)));
+}
+
+export async function addEntry(studentId, moduleId) {
+  const { data: existing } = await supabase.from("portfolio_entries").select("position").eq("module_id", moduleId);
+  const position = (existing || []).reduce((m, r) => Math.max(m, r.position), -1) + 1;
+  const { data, error } = await supabase.from("portfolio_entries")
+    .insert({ student_id: studentId, module_id: moduleId, title: "", position })
+    .select("*").single();
+  if (error) throw error;
+  return data;
+}
+
+export const updateEntry = (id, patch) => supabase.from("portfolio_entries").update(patch).eq("id", id);
+export const deleteEntry = (id)         => supabase.from("portfolio_entries").delete().eq("id", id);
+
+export async function reorderEntries(orderedIds) {
+  await Promise.all(orderedIds.map((id, i) => supabase.from("portfolio_entries").update({ position: i }).eq("id", id)));
+}
+
+// A singleton module (About Me / Contact) should have exactly one entry.
+export async function ensureSingletonEntry(studentId, moduleId) {
+  const { data: rows } = await supabase.from("portfolio_entries").select("*").eq("module_id", moduleId).order("position").limit(1);
+  if (rows && rows.length) return rows[0];
+  return addEntry(studentId, moduleId);
+}
+
+export async function uploadEntryFile(studentId, entryId, file) {
+  const safe = file.name.replace(/[^a-zA-Z0-9._-]/g, "_");
+  const path = `${studentId}/${entryId}/${Date.now()}_${safe}`;
+  const { error: upErr } = await supabase.storage.from("portfolio").upload(path, file, { upsert: false });
+  if (upErr) throw upErr;
+  const { data: existing } = await supabase.from("portfolio_entry_files").select("position").eq("entry_id", entryId);
+  const position = (existing || []).reduce((m, r) => Math.max(m, r.position), -1) + 1;
+  const { data, error } = await supabase.from("portfolio_entry_files")
+    .insert({ student_id: studentId, entry_id: entryId, name: file.name, type: fileType(file.name), storage_path: path, position })
+    .select("*").single();
+  if (error) throw error;
+  return data;
+}
+
+export async function deleteEntryFile(id, storagePath) {
+  if (storagePath) { try { await supabase.storage.from("portfolio").remove([storagePath]); } catch { /* ignore */ } }
+  return supabase.from("portfolio_entry_files").delete().eq("id", id);
 }
