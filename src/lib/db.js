@@ -371,3 +371,32 @@ export async function deleteEntryFile(id, storagePath) {
   if (storagePath) { try { await supabase.storage.from("portfolio").remove([storagePath]); } catch { /* ignore */ } }
   return supabase.from("portfolio_entry_files").delete().eq("id", id);
 }
+
+/* ================= dynamic Home data ================= */
+// Owner/mentor/admin bundle — RLS scopes rows to what the caller may see.
+export async function getPortfolioBundle(studentId) {
+  const [modules, entriesRes, filesRes] = await Promise.all([
+    listModules(studentId),
+    supabase.from("portfolio_entries").select("*").eq("student_id", studentId).order("position"),
+    supabase.from("portfolio_entry_files").select("*").eq("student_id", studentId).order("position"),
+  ]);
+  return { modules, entries: entriesRes.data || [], files: filesRes.data || [] };
+}
+
+// Public bundle by slug. RLS returns only shareable, non-hidden, visible rows.
+export async function getPublicPortfolioV2(slug) {
+  const { data: student } = await supabase.from("students")
+    .select("id, grade, term, privacy, slug, current_school").eq("slug", slug).maybeSingle();
+  if (!student || student.privacy === "Private") return null;
+  const { data: profile } = await supabase.from("profiles")
+    .select("full_name, avatar_url, city").eq("id", student.id).maybeSingle();
+  const [modules, entriesRes, filesRes] = await Promise.all([
+    listModules(student.id),
+    supabase.from("portfolio_entries").select("*").eq("student_id", student.id).order("position"),
+    supabase.from("portfolio_entry_files").select("*").eq("student_id", student.id).order("position"),
+  ]);
+  return {
+    student, name: profile?.full_name || "Student", avatar_url: profile?.avatar_url, city: profile?.city,
+    modules, entries: entriesRes.data || [], files: filesRes.data || [],
+  };
+}
