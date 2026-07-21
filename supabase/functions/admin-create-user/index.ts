@@ -80,5 +80,29 @@ Deno.serve(async (req) => {
   });
   if (createErr) return json({ error: createErr.message }, 400);
 
-  return json({ userId: created.user?.id, tempPassword: password, role });
+  const newId = created.user?.id;
+  if (!newId) return json({ error: "Account created but no user id was returned." }, 500);
+
+  // 5) Reconcile the profile deterministically.
+  //    The on-signup trigger provisions a row from app_metadata, but for
+  //    admin-created users that metadata is not reliably visible to the trigger
+  //    at INSERT time, so the account can land as the default 'student'. The
+  //    service role is authoritative about the role it just created, so we set
+  //    it explicitly here rather than depending on trigger timing.
+  const { error: roleErr } = await admin
+    .from("profiles").update({ role, email, full_name }).eq("id", newId);
+  if (roleErr) return json({ error: roleErr.message }, 400);
+
+  if (role === "mentor") {
+    await admin.from("mentors").upsert(
+      { id: newId, title: user_metadata.title || "Admissions Mentor", focus: user_metadata.focus ?? null },
+      { onConflict: "id" },
+    );
+    await admin.from("students").delete().eq("id", newId);   // remove the row the trigger made
+  } else if (role === "admin") {
+    await admin.from("students").delete().eq("id", newId);
+  }
+  // role === "student": the trigger already created the student row + slug; leave it.
+
+  return json({ userId: newId, tempPassword: password, role });
 });

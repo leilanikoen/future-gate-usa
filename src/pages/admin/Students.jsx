@@ -1,6 +1,6 @@
-import { useState } from "react";
-import { useOutletContext, useNavigate } from "react-router-dom";
-import { Search, Plus, Pencil, Power } from "lucide-react";
+import { useState, useEffect } from "react";
+import { useOutletContext } from "react-router-dom";
+import { Search, Plus, Pencil, Power, Info, X } from "lucide-react";
 import { assignMentor, approveStudent, setActive } from "../../lib/db.js";
 import Card from "../../components/ui/Card.jsx";
 import Button from "../../components/ui/Button.jsx";
@@ -17,10 +17,16 @@ const FILTERS = ["all", "pending", "in progress", "approved"];
 
 export default function AdminStudents() {
   const { students, mentors, reload } = useOutletContext();
-  const nav = useNavigate();
   const [q, setQ] = useState("");
   const [filter, setFilter] = useState("all");
   const [showCreate, setShowCreate] = useState(false);
+  const [toast, setToast] = useState(null);
+
+  useEffect(() => {
+    if (!toast) return;
+    const t = setTimeout(() => setToast(null), 4000);
+    return () => clearTimeout(t);
+  }, [toast]);
 
   const rows = students.filter((s) => {
     const okQ = s.name.toLowerCase().includes(q.toLowerCase());
@@ -34,6 +40,16 @@ export default function AdminStudents() {
   const onAssign = async (id, mentorId) => { await assignMentor(id, mentorId); await reload(); };
   const onApprove = async (id) => { await approveStudent(id); await reload(); };
   const onToggle = async (id, isActive) => { await setActive(id, !isActive); await reload(); };
+
+  const handleView = (s) => {
+    // Public and School-only both have a live page at /student/<slug>.
+    // Only Private (or a student with no slug yet) has no public page.
+    if (s.privacy === "Private" || !s.slug) {
+      setToast(`${s.name} has no public page yet.`);
+      return;
+    }
+    window.open(`/student/${s.slug}`, "_blank", "noopener");
+  };
 
   return (
     <div className="max-w-6xl">
@@ -93,7 +109,7 @@ export default function AdminStudents() {
                     {s.status === "pending" && (
                       <button onClick={() => onApprove(s.id)} className="text-xs font-semibold text-emerald-600 hover:bg-emerald-50 rounded-lg px-2.5 py-1.5">Approve</button>
                     )}
-                    <button onClick={() => nav(`/mentor/review/${s.id}`)} className="text-xs font-medium border border-hairline rounded-lg px-2.5 py-1.5 hover:bg-slate-50">View</button>
+                    <button onClick={() => handleView(s)} className="text-xs font-medium border border-hairline rounded-lg px-2.5 py-1.5 hover:bg-slate-50">View</button>
                     <button onClick={() => onToggle(s.id, s.is_active)} title={s.is_active ? "Deactivate" : "Activate"}
                       className={cn("w-7 h-7 grid place-items-center border rounded-lg hover:bg-slate-50",
                         s.is_active ? "border-hairline text-slate-400" : "border-emerald-200 text-emerald-600")}>
@@ -108,6 +124,14 @@ export default function AdminStudents() {
         </table>
       </Card>
       <p className="text-xs text-muted mt-3">Deactivated accounts are greyed out and can’t sign in; toggle the power icon to restore access.</p>
+
+      {toast && (
+        <div className="fixed top-5 left-1/2 -translate-x-1/2 z-50 flex items-center gap-3 bg-white border border-hairline rounded-2xl shadow-lg px-4 py-3 max-w-md">
+          <span className="w-8 h-8 grid place-items-center rounded-full bg-brand-50 text-brand-600 shrink-0"><Info className="w-4 h-4" /></span>
+          <span className="text-sm text-ink">{toast}</span>
+          <button onClick={() => setToast(null)} className="ml-2 text-slate-400 hover:text-ink" aria-label="Dismiss"><X className="w-4 h-4" /></button>
+        </div>
+      )}
     </div>
   );
 }
