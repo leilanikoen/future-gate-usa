@@ -26,7 +26,7 @@ export default function Sidebar({
         className={cn(
           "fixed z-40 inset-y-0 left-0 w-64 bg-surface border-r border-hairline p-4 flex flex-col",
           "transition-transform duration-200 ease-out",
-          "md:static md:z-auto md:shrink-0",
+          "md:sticky md:top-0 md:bottom-auto md:h-screen md:self-start md:z-auto md:shrink-0",
           open ? "translate-x-0" : "-translate-x-full md:translate-x-0"
         )}
       >
